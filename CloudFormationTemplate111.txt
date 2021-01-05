@@ -1,0 +1,270 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: 'Creates VPC, InternetGateway, RouteTable, SubnetARouteTableAssociation, Subnets, a DBSubnetGroup, an EC2 instance and a RDS instance.'
+Parameters:
+  KeyName:
+    Description: Name of an existing EC2 KeyPair to enable SSH access to the instance
+    Type: 'AWS::EC2::KeyPair::KeyName'
+    ConstraintDescription: must be the name of an existing EC2 KeyPair
+Resources:
+  mySubnet1:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      AvailabilityZone: us-east-1a
+      VpcId: !Ref DemoVPC
+      CidrBlock: 172.16.1.0/24
+      Tags:
+        - Key: Name
+          Value: PrivSubnet
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: dec0b58e-a7e4-44f9-b876-ec163f82bccc
+  mySubnet2:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      AvailabilityZone: us-east-1b
+      VpcId: !Ref DemoVPC
+      CidrBlock: 172.16.2.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: PubSubnet
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: bc2e4779-c19b-45bc-be47-3cd618816528
+  mydbsubnetgroup:
+    Type: 'AWS::RDS::DBSubnetGroup'
+    Properties:
+      DBSubnetGroupName: dbsubnetgroup
+      DBSubnetGroupDescription: description
+      SubnetIds:
+        - !Ref mySubnet1
+        - !Ref mySubnet2
+      Tags:
+        - Key: purpose
+          Value: CloudFormationTesting
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: dde6bdd3-19f1-4f79-8932-6d9bb5cbe88e
+  InstanceSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      Tags:
+        - Key: Name
+          Value: Demo_web_SecGroup
+      VpcId: !Ref DemoVPC
+      GroupDescription: Enable SSH and HTTP access
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allowed from anywhere
+          IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'          
+        - CidrIp: 0.0.0.0/0
+          IpProtocol: tcp
+          FromPort: '80'
+          ToPort: '80'          
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 62aa477a-70d6-419e-b920-7140e93facea
+  EC2Instance:
+    Type: 'AWS::EC2::Instance'
+    Properties:
+      ImageId: ami-07a7d09aee882e766
+      InstanceType: t2.micro
+      SecurityGroupIds:
+        - !GetAtt 
+          - InstanceSecurityGroup
+          - GroupId
+      KeyName: !Ref KeyName
+      SubnetId: !Ref mySubnet2
+      Tags:
+        - Key: Name
+          Value: DemoWebServer
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 758662cc-3c0d-4a65-a903-bf621424eee5
+  RDSInstance:
+    Type: 'AWS::RDS::DBInstance'
+    Properties:
+      AllocatedStorage: '100'
+      DBInstanceClass: db.t2.micro
+      Engine: MySQL
+      Iops: '1000'
+      MasterUsername: admin
+      MasterUserPassword: "^TFGHY6tfghy"
+      DBSubnetGroupName: dbsubnetgroup
+      Tags:
+        - Key: Name
+          Value: DemoDB
+    DependsOn: mydbsubnetgroup
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: f6af75cb-42bb-4ca3-a514-e93d86268cbe
+  JenkinInstance:
+    Type: 'AWS::EC2::Instance'
+    Properties:
+      ImageId: ami-0642f135e7c6ffa1b
+      InstanceType: t2.micro
+      SecurityGroupIds:
+        - !GetAtt 
+          - JenkinSecurityGroup
+          - GroupId
+      KeyName: !Ref KeyName
+      SubnetId: !Ref mySubnet2
+      Tags:
+        - Key: Name
+          Value: DemoJenkin
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 1ce659c7-c66a-4635-9a86-f9f969cc8b53
+  JenkinSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties: 
+      Tags:
+        - Key: Name
+          Value: Demo_Jenkin_SecGroup
+      VpcId: !Ref DemoVPC
+      GroupDescription: Enable SSH and Jenkin access  
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0
+          IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'          
+        - CidrIp: 0.0.0.0/0
+          IpProtocol: tcp
+          FromPort: '8080'        
+          ToPort: '8080'          
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 3e3542e1-4d69-4c61-95a6-a68ac64e2663
+  DemoVPC:
+   Type: 'AWS::EC2::VPC'
+   Properties:
+    CidrBlock: 172.16.0.0/16
+    EnableDnsSupport: 'true'
+    EnableDnsHostnames: 'true'
+    InstanceTenancy: default
+    Tags:
+      - Key: Name
+        Value: Demo_VPC 
+  InternetGateway:
+    Type: 'AWS::EC2::InternetGateway'
+    Properties:
+      Tags:
+      - Key: Name
+        Value: DemoInternetGateway     
+  VPCGatewayAttachment:
+    Type: 'AWS::EC2::VPCGatewayAttachment'
+    Properties:
+      VpcId: 
+        !Ref DemoVPC
+      InternetGatewayId: 
+        !Ref InternetGateway
+  RouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref DemoVPC
+  InternetRoute:
+    Type: 'AWS::EC2::Route'
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+      RouteTableId: !Ref RouteTable
+  SubnetARouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      RouteTableId: !Ref RouteTable
+      SubnetId: !Ref mySubnet2
+Metadata:
+  'AWS::CloudFormation::Designer':
+    62aa477a-70d6-419e-b920-7140e93facea:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: -40
+        'y': 350
+      z: 1
+      embeds: []
+    bc2e4779-c19b-45bc-be47-3cd618816528:
+      size:
+        width: 240
+        height: 240
+      position:
+        x: 60
+        'y': 90
+      z: 1
+      embeds:
+        - 758662cc-3c0d-4a65-a903-bf621424eee5
+        - 1ce659c7-c66a-4635-9a86-f9f969cc8b53
+    758662cc-3c0d-4a65-a903-bf621424eee5:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 90
+        'y': 150
+      z: 2
+      parent: bc2e4779-c19b-45bc-be47-3cd618816528
+      embeds: []
+      isassociatedwith:
+        - 62aa477a-70d6-419e-b920-7140e93facea
+      iscontainedinside:
+        - bc2e4779-c19b-45bc-be47-3cd618816528
+        - bc2e4779-c19b-45bc-be47-3cd618816528
+        - bc2e4779-c19b-45bc-be47-3cd618816528
+        - bc2e4779-c19b-45bc-be47-3cd618816528
+    dec0b58e-a7e4-44f9-b876-ec163f82bccc:
+      size:
+        width: 150
+        height: 150
+      position:
+        x: 360
+        'y': 300
+      z: 1
+      embeds: []
+    dde6bdd3-19f1-4f79-8932-6d9bb5cbe88e:
+      size:
+        width: 150
+        height: 150
+      position:
+        x: 360
+        'y': 90
+      z: 1
+      embeds: []
+      iscontainedinside:
+        - dec0b58e-a7e4-44f9-b876-ec163f82bccc
+        - bc2e4779-c19b-45bc-be47-3cd618816528
+    f6af75cb-42bb-4ca3-a514-e93d86268cbe:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 180
+        'y': 390
+      z: 1
+      embeds: []
+      dependson:
+        - dde6bdd3-19f1-4f79-8932-6d9bb5cbe88e
+    1ce659c7-c66a-4635-9a86-f9f969cc8b53:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 194.5891003832445
+        'y': 151.5991645713763
+      z: 2
+      parent: bc2e4779-c19b-45bc-be47-3cd618816528
+      isassociatedwith:
+        - 3e3542e1-4d69-4c61-95a6-a68ac64e2663
+      iscontainedinside:
+        - bc2e4779-c19b-45bc-be47-3cd618816528
+    3e3542e1-4d69-4c61-95a6-a68ac64e2663:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 64.45092490971491
+        'y': 418.5249113455501
+      z: 0
